@@ -15,6 +15,7 @@ const port = process.env.PORT || 5000
 
 const User = require("../src/models/users")
 const Messages = require("../src/models/message.js");
+const Post = require('../src/models/posts.js');
 
 
 app.use(express.json())
@@ -364,4 +365,160 @@ io.on("connection", (socket) => {
       socket.to(sendUserSocket).emit("msg-recieve", data.msg);
     }
   });
+});
+
+
+
+// add image in user profile 
+const fs = require('fs');
+const path = require('path');
+
+// Ensure the uploads directory exists
+const uploadsDir = path.join(__dirname, './uploads');
+if (!fs.existsSync(uploadsDir)) {
+  fs.mkdirSync(uploadsDir);
+}
+
+// Configure multer for file uploads
+const storage = multer.diskStorage({
+  destination: function (req, file, cb) {
+    cb(null, './src/uploads/');
+  },
+  filename: function (req, file, cb) {
+    cb(null, Date.now() + path.extname(file.originalname)); // Append the file extension
+  }
+});
+
+const upload = multer({ storage: storage });
+
+// Serve static files from the uploads directory
+app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
+
+
+// POST endpoint to upload an image
+app.post('/upload-image/:userId', upload.single('image'), async (req, res) => {
+  const userId = req.params.userId;
+
+  try {
+    const user = await User.findById(userId);
+
+    if (!user) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+
+    user.image = `/uploads/${req.file.filename}`; // Store the file path in the user document
+
+    await user.save();
+
+    res.status(200).json({ message: 'Image uploaded successfully', imageUrl: user.image });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
+
+
+// posts 
+// Ensure the posts directory exists within uploads
+const postsDir = path.join(__dirname, './uploads/posts');
+if (!fs.existsSync(postsDir)) {
+  fs.mkdirSync(postsDir, { recursive: true });
+}
+
+// Configure multer for file uploads
+const postsStorage = multer.diskStorage({
+  destination: function (req, file, cb) {
+    cb(null, postsDir);
+  },
+  filename: function (req, file, cb) {
+    cb(null, Date.now() + path.extname(file.originalname)); // Append the file extension
+  }
+});
+
+const uploadPosts = multer({ storage: postsStorage });
+
+// Serve static files from the uploads directory
+// app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
+
+
+// Create posts endpoint
+app.post('/posts', uploadPosts.single('image'), async (req, res) => {
+  try {
+    const { description, user } = req.body;
+    const imageUrl = req.file ? `/uploads/posts/${req.file.filename}` : null;
+
+    const newPost = new Post({
+      description,
+      imageUrl,
+      user,
+      createdAt: new Date()
+    });
+
+    await newPost.save();
+
+    res.status(201).json(newPost);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+
+// Get posts by user ID sorted by creation date (newest first)
+app.get('/posts/user/:userId', async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const posts = await Post.find({ user: userId }).sort({ createdAt: -1 }).populate('user');
+    res.status(200).json(posts);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Get all posts sorted by newest first, excluding posts by the provided user ID, and populate user information
+app.get('/posts', async (req, res) => {
+  const { userId } = req.query;
+  try {
+    const query = userId ? { user: { $ne: userId } } : {};
+    const posts = await Post.find(query).sort({ createdAt: -1 }).populate('user');
+    res.status(200).json(posts);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+
+// Get all posts sorted by newest first and populate user information
+// app.get('/posts', async (req, res) => {
+//   try {
+//     const posts = await Post.find().sort({ createdAt: -1 }).populate('user');
+//     res.status(200).json(posts);
+//   } catch (error) {
+//     res.status(500).json({ error: error.message });
+//   }
+// });
+
+
+// Update user profession and address
+app.post('/updateUser', async (req, res) => {
+  const { userId, profession, address } = req.body;
+
+  // Validate input
+  if (!userId || !profession || !address) {
+      return res.status(400).json({ message: 'User ID, profession, and address are required' });
+  }
+
+  try {
+      // Find user by ID and update
+      const user = await User.findByIdAndUpdate(userId, { profession, address }, { new: true });
+
+      if (!user) {
+          return res.status(404).json({ message: 'User not found' });
+      }
+
+      res.status(200).json({ message: 'User updated successfully', user });
+  } catch (error) {
+      console.error('Error updating user:', error);
+      res.status(500).json({ message: 'Internal server error' });
+  }
 });

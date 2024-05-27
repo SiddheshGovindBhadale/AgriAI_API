@@ -21,6 +21,12 @@ const userSchema = new mongoose.Schema({
   image: {
     type: String,
   },
+  profession: {
+    type: String,
+  },
+  address: {
+    type: String,
+  },
   freindRequests: [
     {
       type: mongoose.Schema.Types.ObjectId,
@@ -41,14 +47,6 @@ const userSchema = new mongoose.Schema({
   ],
 })
 
-// // bcrypt password
-// userSchema.pre("save", async function (next) {
-//   if (this.isModified("password")) {
-//     this.password = await bcrypt.hash(this.password, 10)
-//     //this.conPassword = undefined
-//   }
-//   next()
-// })
 
 const User = new mongoose.model("User", userSchema);
 
